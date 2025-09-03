@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Ecards Simple - Fabric.js Editor</title>
+  <meta name="description" content="Simple HTML5 e-cards editor for birthday/wedding invites using Fabric.js with localStorage drafts."/>
+  <!-- Fabric.js -->
+  <script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js"></script>
+  <!-- WebFont Loader -->
+  <script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.26/webfont.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --muted: #334155;
+      --muted-2: #475569;
+      --text: #e5e7eb;
+      --accent: #60a5fa;
+      --accent-2: #93c5fd;
+      --danger: #ef4444;
+      --ok: #10b981;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color: var(--text);
+      background: linear-gradient(180deg, #0b1023 0%, #111827 100%);
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+    header {
+      border-bottom: 1px solid #1f2937;
+      background: rgba(17,24,39,0.7);
+      backdrop-filter: blur(6px);
+    }
+    .bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 10px 16px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .brand .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: conic-gradient(from 180deg at 50% 50%, #60a5fa, #10b981, #f59e0b, #ef4444, #60a5fa);
+      box-shadow: 0 0 18px rgba(96,165,250,0.7);
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .controls .group {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      background: #0b1220;
+      border: 1px solid #1f2937;
+      padding: 6px 8px;
+      border-radius: 10px;
+    }
+    button, select, input[type="number"] {
+      appearance: none;
+      background: #0b1220;
+      color: var(--text);
+      border: 1px solid #1f2937;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 14px;
+      transition: all 0.15s ease;
+      outline: none;
+    }
+    button:hover, select:hover, input[type="number"]:hover {
+      border-color: var(--muted);
+    }
+    button.primary {
+      background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+      border: none;
+      color: white;
+      font-weight: 600;
+      box-shadow: 0 6px 20px rgba(59,130,246,0.35);
+    }
+    button.primary:hover { filter: brightness(1.05); }
+    button.ghost {
+      background: #0b1220;
+    }
+    button.danger {
+      border-color: rgba(239, 68, 68, 0.6);
+      color: #fecaca;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    input[type="color"] {
+      width: 44px;
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid #1f2937;
+      background: #0b1220;
+      padding: 4px;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 260px 1fr 260px;
+      gap: 16px;
+      max-width: 1200px;
+      padding: 16px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .panel {
+      background: linear-gradient(180deg, #0b1220 0%, #0a1020 100%);
+      border: 1px solid #1f2937;
+      border-radius: 16px;
+      padding: 12px;
+      display: grid;
+      grid-auto-rows: min-content;
+      gap: 8px;
+      min-height: 0;
+    }
+    .panel h3 {
+      margin: 4px 4px 8px 4px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #cbd5e1;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+    .templates {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .template-card {
+      display: grid;
+      grid-template-columns: 64px 1fr auto;
+      gap: 10px;
+      padding: 8px;
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      align-items: center;
+      background: #0b1220;
+      transition: border-color 0.15s ease, transform 0.05s ease;
+      cursor: pointer;
+    }
+    .template-card:hover {
+      border-color: #334155;
+      transform: translateY(-1px);
+    }
+    .template-card img {
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid #1f2937;
+      background: #0b1220;
+    }
+    .template-card .name {
+      font-weight: 600;
+      color: #e5e7eb;
+      font-size: 14px;
+    }
+    .template-card .meta {
+      font-size: 12px;
+      color: #93a3b8;
+    }
+    .canvas-wrap {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .stage {
+      border: 1px dashed #334155;
+      border-radius: 16px;
+      padding: 12px;
+      background:
+        radial-gradient(transparent 2px, #0b1220 2px) 0 0/18px 18px,
+        linear-gradient(180deg, rgba(148,163,184,0.08), rgba(148,163,184,0.02));
+      overflow: auto;
+      display: grid;
+      place-items: center;
+      min-height: 520px;
+    }
+    canvas {
+      background: transparent;
+      border-radius: 12px;
+    }
+    .quick {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .quick button {
+      padding: 8px 12px;
+      font-weight: 600;
+    }
+    .drafts {
+      display: grid;
+      gap: 8px;
+      overflow: auto;
+    }
+    .draft {
+      border: 1px solid #1f2937;
+      border-radius: 12px;
+      padding: 8px;
+      background: #0b1220;
+      display: grid;
+      gap: 6px;
+    }
+    .draft .title {
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .draft .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: #93a3b8;
+    }
+    .draft .row .btns {
+      display: flex;
+      gap: 6px;
+    }
+    .footer-hint {
+      text-align: center;
+      color: #94a3b8;
+      font-size: 12px;
+      padding: 4px 0 10px 0;
+    }
+    .kbd {
+      border: 1px solid #334155;
+      border-bottom-width: 3px;
+      border-radius: 6px;
+      padding: 1px 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: #0b1220;
+      color: #cbd5e1;
+    }
+    @media (max-width: 1100px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="bar">
+      <div class="brand">
+        <div class="dot"></div>
+        <div>Ecards Simple</div>
+      </div>
+      <div class="controls">
+        <div class="group">
+          <button id="btnAddText" title="Add editable text">+ Text</button>
+          <button id="btnDelete" class="danger" title="Delete selected">Delete</button>
+        </div>
+        <div class="group">
+          <label for="fontFamily">Font</label>
+          <select id="fontFamily" title="Font family"></select>
+        </div>
+        <div class="group">
+          <label for="fontSize">Size</label>
+          <input id="fontSize" type="number" min="8" max="300" step="1" value="36" style="width:80px"/>
+        </div>
+        <div class="group">
+          <label for="fontColor">Color</label>
+          <input id="fontColor" type="color" value="#ffffff"/>
+        </div>
+        <div class="group">
+          <button id="btnBringFwd" class="ghost" title="Bring forward">▲</button>
+          <button id="btnSendBack" class="ghost" title="Send backward">▼</button>
+        </div>
+        <div class="group">
+          <button id="btnExport" class="primary" title="Download as PNG">Export</button>
+          <button id="btnSave" class="ghost" title="Save draft to localStorage">Save</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel" aria-label="Templates">
+      <h3>Templates</h3>
+      <div class="templates" id="templates"></div>
+      <div class="footer-hint">
+        Place PNG/JPG files into /assets and add their names in the template list in code.
+      </div>
+    </section>
+
+    <section class="canvas-wrap" aria-label="Canvas">
+      <div class="stage">
+        <canvas id="c" width="900" height="600"></canvas>
+      </div>
+      <div class="quick">
+        <button id="btnNew" class="ghost">New blank</button>
+        <button id="btnAutoSave" class="ghost" title="Toggle autosave changes">Autosave: Off</button>
+      </div>
+      <div class="footer-hint">
+        Tips: Select text and use keyboard: <span class="kbd">Del</span> to delete, drag to move, resize handles to scale, double-click to edit.
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Drafts">
+      <h3>Drafts</h3>
+      <div class="drafts" id="drafts"></div>
+    </section>
+  </main>
+
+  <script>
+    // Configuration
+    const TEMPLATES = [
+      // Add more filenames from /assets here:
+      { name: "Template 1", file: "assets/template1.png", w: 900, h: 600 }
+      // Example:
+      // { name: "Floral Wedding", file: "assets/floral_wedding.jpg", w: 1080, h: 720 },
+      // { name: "Birthday Balloons", file: "assets/birthday_balloons.png", w: 1200, h: 675 },
+    ];
+
+    const FONT_FAMILIES = [
+      "Roboto",
+      "Open Sans",
+      "Montserrat",
+      "Poppins",
+      "Lora",
+      "Playfair Display",
+      "Merriweather",
+      "Oswald",
+      "Raleway",
+      "Nunito",
+      "Fira Sans",
+      "Inter",
+      "Work Sans",
+      "Source Sans Pro",
+      "Cinzel",
+      "Comfortaa",
+      "Dancing Script",
+      "Great Vibes",
+      "Pacifico",
+      "Lobster",
+      "Indie Flower",
+      "Abril Fatface",
+      "Anton",
+      "Bangers",
+      "Caveat",
+      "Rubik",
+      "Quicksand",
+      "Teko",
+      "Arvo",
+      "Playfair SC"
+    ];
+
+    const DEFAULTS = {
+      width: 900,
+      height: 600,
+      bgColor: "transparent"
+    };
+
+    const STORAGE_KEYS = {
+      LIST: "ecards_drafts_index",
+      ITEM_PREFIX: "ecards_draft_"
+    };
+
+    // State
+    let canvas;
+    let currentDraftId = null;
+    let currentTemplate = null;
+    let autosave = false;
+
+    // Helpers: Fonts
+    const fontStatus = new Map();
+    function loadFonts() {
+      return new Promise((resolve) => {
+        WebFont.load({
+          google: {
+            families: FONT_FAMILIES.map(f => `${f}:400,600,700`)
+          },
+          active: resolve,
+          inactive: resolve
+        });
+      });
+    }
+    function ensureFontLoaded(fontFamily) {
+      return new Promise((resolve) => {
+        if (fontStatus.get(fontFamily) === "loaded") return resolve();
+        WebFont.load({
+          google: { families: [fontFamily] },
+          active: () => { fontStatus.set(fontFamily, "loaded"); resolve(); },
+          inactive: () => { fontStatus.set(fontFamily, "failed"); resolve(); }
+        });
+      });
+    }
+
+    // Helpers: Storage
+    function getDraftIndex() {
+      const raw = localStorage.getItem(STORAGE_KEYS.LIST);
+      return raw ? JSON.parse(raw) : [];
+    }
+    function setDraftIndex(list) {
+      localStorage.setItem(STORAGE_KEYS.LIST, JSON.stringify(list));
+    }
+    function saveDraftToStorage(draft) {
+      const id = draft.id;
+      localStorage.setItem(STORAGE_KEYS.ITEM_PREFIX + id, JSON.stringify(draft));
+      let idx = getDraftIndex();
+      const i = idx.findIndex(d => d.id === id);
+      const meta = { id, title: draft.title, updatedAt: draft.updatedAt, template: draft.template };
+      if (i === -1) idx.unshift(meta);
+      else idx[i] = meta;
+      setDraftIndex(idx);
+    }
+    function loadDraftFromStorage(id) {
+      const raw = localStorage.getItem(STORAGE_KEYS.ITEM_PREFIX + id);
+      return raw ? JSON.parse(raw) : null;
+    }
+    function deleteDraftFromStorage(id) {
+      localStorage.removeItem(STORAGE_KEYS.ITEM_PREFIX + id);
+      let idx = getDraftIndex().filter(d => d.id !== id);
+      setDraftIndex(idx);
+    }
+
+    // UI Builders
+    function buildTemplateList() {
+      const holder = document.getElementById("templates");
+      holder.innerHTML = "";
+      TEMPLATES.forEach(t => {
+        const card = document.createElement("div");
+        card.className = "template-card";
+        card.innerHTML = `
+          <img src="${t.file}" alt="${t.name}"/>
+          <div>
+            <div class="name">${t.name}</div>
+            <div class="meta">${t.w} x ${t.h}</div>
+          </div>
+          <div>
+            <button class="ghost">Use</button>
+          </div>
+        `;
+        card.addEventListener("click", () => applyTemplate(t));
+        holder.appendChild(card);
+      });
+    }
+
+    function buildFontSelector() {
+      const sel = document.getElementById("fontFamily");
+      FONT_FAMILIES.forEach(f => {
+        const opt = document.createElement("option");
+        opt.value = f;
+        opt.textContent = f;
+        opt.style.fontFamily = f;
+        sel.appendChild(opt);
+      });
+      sel.value = "Poppins";
+    }
+
+    function buildDraftsList() {
+      const wrap = document.getElementById("drafts");
+      const list = getDraftIndex();
+      wrap.innerHTML = "";
+      if (!list.length) {
+        const empty = document.createElement("div");
+        empty.className = "footer-hint";
+        empty.textContent = "No drafts yet. Create one and Save.";
+        wrap.appendChild(empty);
+        return;
+      }
+      list.forEach(meta => {
+        const d = document.createElement("div");
+        d.className = "draft";
+        const date = new Date(meta.updatedAt).toLocaleString();
+        d.innerHTML = `
+          <div class="title">${meta.title}</div>
+          <div class="row">
+            <div>${date}</div>
+            <div class="btns">
+              <button data-id="${meta.id}" class="ghost btn-load">Load</button>
+              <button data-id="${meta.id}" class="danger btn-delete">Delete</button>
+            </div>
+          </div>
+        `;
+        wrap.appendChild(d);
+      });
+      wrap.querySelectorAll(".btn-load").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const id = e.currentTarget.getAttribute("data-id");
+          loadDraft(id);
+        });
+      });
+      wrap.querySelectorAll(".btn-delete").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          const id = e.currentTarget.getAttribute("data-id");
+          if (confirm("Delete this draft? This cannot be undone.")) {
+            deleteDraftFromStorage(id);
+            if (currentDraftId === id) {
+              currentDraftId = null;
+            }
+            buildDraftsList();
+          }
+        });
+      });
+    }
+
+    // Canvas Init
+    function initCanvas() {
+      canvas = new fabric.Canvas("c", {
+        backgroundColor: DEFAULTS.bgColor,
+        preserveObjectStacking: true,
+        selection: true
+      });
+      canvas.setWidth(DEFAULTS.width);
+      canvas.setHeight(DEFAULTS.height);
+
+      // Keep selection styles reasonable
+      fabric.Object.prototype.transparentCorners = false;
+      fabric.Object.prototype.cornerStyle = "circle";
+      fabric.Object.prototype.cornerColor = "#60a5fa";
+      fabric.Object.prototype.cornerStrokeColor = "#1f2937";
+      fabric.Object.prototype.cornerSize = 10;
+      fabric.Object.prototype.borderColor = "#60a5fa";
+      fabric.Object.prototype.borderScaleFactor = 2;
+
+      canvas.on("selection:created", syncControlsFromSelection);
+      canvas.on("selection:updated", syncControlsFromSelection);
+      canvas.on("selection:cleared", () => syncControlsFromSelection(null));
+      canvas.on("object:modified", () => maybeAutosave());
+      canvas.on("object:added", () => maybeAutosave());
+      canvas.on("object:removed", () => maybeAutosave());
+
+      // Delete key
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Delete" || e.key === "Backspace") {
+          if (document.activeElement && ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
+          deleteSelected();
+        }
+      });
+    }
+
+    // Template handling
+    async function applyTemplate(t) {
+      currentTemplate = t;
+      // Resize canvas to template size
+      if (t.w && t.h) {
+        canvas.setWidth(t.w);
+        canvas.setHeight(t.h);
+        canvas.calcOffset();
+      }
+      await setBackgroundImage(t.file);
+      canvas.renderAll();
+      if (!currentDraftId) {
+        // starting a new unnamed draft
+        currentDraftId = null;
+      }
+      maybeAutosave();
+    }
+
+    function setBackgroundImage(url) {
+      return new Promise((resolve, reject) => {
+        fabric.Image.fromURL(url, (img) => {
+          // Scale to fit if needed
+          const cw = canvas.getWidth();
+          const ch = canvas.getHeight();
+          const iw = img.width;
+          const ih = img.height;
+          const scaleX = cw / iw;
+          const scaleY = ch / ih;
+          img.set({ originX: "left", originY: "top" });
+          canvas.setBackgroundImage(img, () => {
+            // Ensure proper scaling to fill entire canvas
+            canvas.backgroundImage.scaleToWidth(cw);
+            canvas.backgroundImage.scaleToHeight(ch);
+            resolve();
+          });
+        }, { crossOrigin: "anonymous" });
+      });
+    }
+
+    // Text Handling
+    async function addText() {
+      const fontFamily = document.getElementById("fontFamily").value || "Poppins";
+      await ensureFontLoaded(fontFamily);
+      const itext = new fabric.IText("Double-click to edit", {
+        left: canvas.getWidth() / 2,
+        top: canvas.getHeight() / 2,
+        originX: "center",
+        originY: "center",
+        fill: document.getElementById("fontColor").value || "#ffffff",
+        fontSize: Number(document.getElementById("fontSize").value) || 36,
+        fontFamily
+      });
+      canvas.add(itext);
+      canvas.setActiveObject(itext);
+      canvas.renderAll();
+    }
+
+    function deleteSelected() {
+      const obj = canvas.getActiveObject();
+      if (!obj) return;
+      canvas.remove(obj);
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+    }
+
+    function bringForward() {
+      const obj = canvas.getActiveObject();
+      if (!obj) return;
+      canvas.bringForward(obj);
+      canvas.requestRenderAll();
+    }
+
+    function sendBackwards() {
+      const obj = canvas.getActiveObject();
+      if (!obj) return;
+      canvas.sendBackwards(obj);
+      canvas.requestRenderAll();
+    }
+
+    // Controls syncing
+    function syncControlsFromSelection(e) {
+      const obj = e ? e.selected?.[0] : null;
+      const color = document.getElementById("fontColor");
+      const size = document.getElementById("fontSize");
+      const family = document.getElementById("fontFamily");
+      const del = document.getElementById("btnDelete");
+      const fwd = document.getElementById("btnBringFwd");
+      const back = document.getElementById("btnSendBack");
+      const hasSel = !!obj;
+      del.disabled = !hasSel;
+      fwd.disabled = !hasSel;
+      back.disabled = !hasSel;
+
+      if (obj && obj.type === "i-text") {
+        color.value = rgbToHex(obj.fill || "#ffffff");
+        size.value = obj.fontSize || 36;
+        // If font not in list, keep current
+        if ([...family.options].some(o => o.value === obj.fontFamily)) {
+          family.value = obj.fontFamily;
+        }
+      }
+    }
+
+    function rgbToHex(rgb) {
+      if (typeof rgb !== "string") return "#ffffff";
+      if (rgb.startsWith("#")) return rgb;
+      // rgb(a) -> hex
+      const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+      if (!m) return "#ffffff";
+      const r = (+m[1]).toString(16).padStart(2,"0");
+      const g = (+m[2]).toString(16).padStart(2,"0");
+      const b = (+m[3]).toString(16).padStart(2,"0");
+      return `#${r}${g}${b}`;
+    }
+
+    // Apply control changes to selection
+    async function onFontFamilyChange() {
+      const obj = canvas.getActiveObject();
+      const val = document.getElementById("fontFamily").value;
+      await ensureFontLoaded(val);
+      if (obj && obj.type === "i-text") {
+        obj.set("fontFamily", val);
+        obj.set("dirty", true);
+        obj.initDimensions();
+        canvas.requestRenderAll();
+        maybeAutosave();
+      }
+    }
+    function onFontSizeChange() {
+      const obj = canvas.getActiveObject();
+      const val = Number(document.getElementById("fontSize").value);
+      if (obj && obj.type === "i-text" && val) {
+        obj.set("fontSize", val);
+        obj.set("dirty", true);
+        obj.initDimensions();
+        canvas.requestRenderAll();
+        maybeAutosave();
+      }
+    }
+    function onFontColorChange() {
+      const obj = canvas.getActiveObject();
+      const val = document.getElementById("fontColor").value;
+      if (obj && obj.type === "i-text") {
+        obj.set("fill", val);
+        canvas.requestRenderAll();
+        maybeAutosave();
+      }
+    }
+
+    // Export
+    function exportPNG() {
+      // Use multiplier for better resolution
+      const dataUrl = canvas.toDataURL({
+        format: "png",
+        multiplier: 2,
+        enableRetinaScaling: true
+      });
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      const name = (currentDraftId || "ecard") + ".png";
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    // Save / Load
+    function newDraftBlank() {
+      currentDraftId = null;
+      currentTemplate = null;
+      canvas.clear();
+      canvas.setBackgroundImage(null, canvas.renderAll.bind(canvas));
+      canvas.setWidth(DEFAULTS.width);
+      canvas.setHeight(DEFAULTS.height);
+      canvas.renderAll();
+    }
+
+    function saveDraft() {
+      const title = prompt("Enter a title for this draft:", getSuggestedTitle());
+      if (!title) return;
+      const now = Date.now();
+      const id = currentDraftId || ("draft_" + now);
+      const json = canvas.toJSON([
+        // custom properties if any can be added here
+      ]);
+      const draft = {
+        id,
+        title,
+        updatedAt: now,
+        template: currentTemplate ? currentTemplate.file : null,
+        canvasSize: { w: canvas.getWidth(), h: canvas.getHeight() },
+        data: json
+      };
+      saveDraftToStorage(draft);
+      currentDraftId = id;
+      buildDraftsList();
+      flash("Draft saved");
+    }
+
+    function getSuggestedTitle() {
+      if (currentTemplate?.name) return currentTemplate.name + " draft";
+      return "Untitled ecard";
+    }
+
+    async function loadDraft(id) {
+      const draft = loadDraftFromStorage(id);
+      if (!draft) return;
+      currentDraftId = draft.id;
+      currentTemplate = draft.template ? TEMPLATES.find(t => t.file === draft.template) || { file: draft.template, w: draft.canvasSize?.w, h: draft.canvasSize?.h } : null;
+
+      // Reset canvas size
+      const w = draft.canvasSize?.w || DEFAULTS.width;
+      const h = draft.canvasSize?.h || DEFAULTS.height;
+      canvas.setWidth(w);
+      canvas.setHeight(h);
+
+      canvas.clear();
+      if (draft.template) {
+        await setBackgroundImage(draft.template);
+      } else {
+        canvas.setBackgroundImage(null, canvas.renderAll.bind(canvas));
+      }
+
+      // Fabric load from JSON
+      await new Promise((resolve) => {
+        canvas.loadFromJSON(draft.data, () => {
+          canvas.renderAll();
+          resolve();
+        });
+      });
+
+      // Ensure fonts for any text objects
+      const objs = canvas.getObjects().filter(o => o.type === "i-text");
+      const families = [...new Set(objs.map(o => o.fontFamily).filter(Boolean))];
+      for (const fam of families) {
+        await ensureFontLoaded(fam);
+      }
+      canvas.renderAll();
+      flash("Draft loaded");
+    }
+
+    // Autosave
+    function toggleAutosave() {
+      autosave = !autosave;
+      document.getElementById("btnAutoSave").textContent = "Autosave: " + (autosave ? "On" : "Off");
+      if (autosave) maybeAutosave();
+    }
+    let autosaveTimer = null;
+    function maybeAutosave() {
+      if (!autosave) return;
+      clearTimeout(autosaveTimer);
+      autosaveTimer = setTimeout(() => {
+        if (!currentDraftId) {
+          // Create a transient id
+          currentDraftId = "autosave_" + Date.now();
+        }
+        const title = getSuggestedTitle() + " (autosave)";
+        const now = Date.now();
+        const json = canvas.toJSON([]);
+        const draft = {
+          id: currentDraftId,
+          title,
+          updatedAt: now,
+          template: currentTemplate ? currentTemplate.file : null,
+          canvasSize: { w: canvas.getWidth(), h: canvas.getHeight() },
+          data: json
+        };
+        saveDraftToStorage(draft);
+        buildDraftsList();
+      }, 600);
+    }
+
+    // UI Flash
+    function flash(msg) {
+      const el = document.createElement("div");
+      el.textContent = msg;
+      el.style.position = "fixed";
+      el.style.right = "16px";
+      el.style.bottom = "16px";
+      el.style.background = "rgba(17,24,39,0.9)";
+      el.style.border = "1px solid #334155";
+      el.style.color = "#e5e7eb";
+      el.style.padding = "10px 14px";
+      el.style.borderRadius = "10px";
+      el.style.zIndex = 9999;
+      el.style.boxShadow = "0 10px 30px rgba(0,0,0,0.3)";
+      document.body.appendChild(el);
+      setTimeout(() => {
+        el.style.transition = "opacity .4s ease";
+        el.style.opacity = "0";
+        setTimeout(() => el.remove(), 450);
+      }, 900);
+    }
+
+    // Wire up
+    async function main() {
+      // Load fonts first
+      await loadFonts();
+      buildFontSelector();
+      initCanvas();
+      buildTemplateList();
+      buildDraftsList();
+
+      // Controls
+      document.getElementById("btnAddText").addEventListener("click", addText);
+      document.getElementById("btnDelete").addEventListener("click", deleteSelected);
+      document.getElementById("btnBringFwd").addEventListener("click", bringForward);
+      document.getElementById("btnSendBack").addEventListener("click", sendBackwards);
+      document.getElementById("fontFamily").addEventListener("change", onFontFamilyChange);
+      document.getElementById("fontSize").addEventListener("change", onFontSizeChange);
+      document.getElementById("fontColor").addEventListener("input", onFontColorChange);
+      document.getElementById("btnExport").addEventListener("click", exportPNG);
+      document.getElementById("btnSave").addEventListener("click", saveDraft);
+      document.getElementById("btnNew").addEventListener("click", newDraftBlank);
+      document.getElementById("btnAutoSave").addEventListener("click", toggleAutosave);
+
+      // Load last draft automatically if exists
+      const list = getDraftIndex();
+      if (list.length) {
+        await loadDraft(list[0].id);
+      } else {
+        // If template exists, apply default first template
+        if (TEMPLATES.length) {
+          await applyTemplate(TEMPLATES[0]);
+        }
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>
