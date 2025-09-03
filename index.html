@@ -293,7 +293,8 @@
         </div>
         <div class="group">
           <button id="btnExport" class="primary" title="Download as PNG">Export</button>
-          <button id="btnSave" class="ghost" title="Save draft to localStorage">Save</button>
+          <button id="btnSave" class="ghost" title="Save draft">Save</button>
+          <button id="btnStorageMode" class="ghost" title="Toggle between Local and API storage">Storage: Local</button>
         </div>
       </div>
     </div>
@@ -381,11 +382,18 @@
       ITEM_PREFIX: "ecards_draft_"
     };
 
+    // Backend API configuration
+    const API_CONFIG = {
+      baseUrl: (window.localStorage.getItem("ecards_api_base") || (location.protocol === "file:" ? "http://localhost:5001" : `${location.origin}`)).replace(/\/$/, "")
+    };
+
     // State
     let canvas;
     let currentDraftId = null;
     let currentTemplate = null;
     let autosave = false;
+    let storageMode = "local"; // "local" | "api"
+    let apiBase = API_CONFIG.baseUrl;
 
     // Helpers: Fonts
     const fontStatus = new Map();
@@ -438,6 +446,61 @@
       let idx = getDraftIndex().filter(d => d.id !== id);
       setDraftIndex(idx);
     }
+    // Backend API helpers and URL handling
+    function setStorageMode(mode) {
+      storageMode = mode === "api" ? "api" : "local";
+      const btn = document.getElementById("btnStorageMode");
+      if (btn) btn.textContent = "Storage: " + (storageMode === "api" ? "API" : "Local");
+    }
+
+    function toggleStorageMode() {
+      setStorageMode(storageMode === "api" ? "local" : "api");
+    }
+
+    function getUrlDraftId() {
+      const sp = new URLSearchParams(location.search);
+      const id = sp.get("draft_id");
+      return id || null;
+    }
+
+    function updateUrlWithDraftId(id) {
+      try {
+        const url = new URL(location.href);
+        url.searchParams.set("draft_id", id);
+        history.replaceState({}, "", url.toString());
+      } catch (e) {
+        console.warn("Failed to update URL with draft_id", e);
+      }
+    }
+
+    async function saveDraftToApi(draft) {
+      const res = await fetch(apiBase + "/api/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error("API save failed: " + res.status + " " + t);
+      }
+      const json = await res.json();
+      const newId = json?.id || draft.id;
+      return newId;
+    }
+
+    async function loadDraftFromApi(id) {
+      const res = await fetch(apiBase + "/api/drafts/" + encodeURIComponent(id), {
+        method: "GET"
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error("API load failed: " + res.status + " " + t);
+      }
+      const draft = await res.json();
+      await restoreDraft(draft);
+      currentDraftId = draft.id;
+      flash("Draft loaded from API");
+    }
 
     // UI Builders
     function buildTemplateList() {
@@ -480,7 +543,7 @@
       if (!list.length) {
         const empty = document.createElement("div");
         empty.className = "footer-hint";
-        empty.textContent = "No drafts yet. Create one and Save.";
+        empty.textContent = "No local drafts yet. Create one and Save.";
         wrap.appendChild(empty);
         return;
       }
@@ -737,9 +800,7 @@
       if (!title) return;
       const now = Date.now();
       const id = currentDraftId || ("draft_" + now);
-      const json = canvas.toJSON([
-        // custom properties if any can be added here
-      ]);
+      const json = canvas.toJSON([]);
       const draft = {
         id,
         title,
@@ -748,10 +809,25 @@
         canvasSize: { w: canvas.getWidth(), h: canvas.getHeight() },
         data: json
       };
-      saveDraftToStorage(draft);
-      currentDraftId = id;
-      buildDraftsList();
-      flash("Draft saved");
+
+      if (storageMode === "api") {
+        saveDraftToApi(draft).then((newId) => {
+          currentDraftId = newId || id;
+          updateUrlWithDraftId(currentDraftId);
+          flash("Draft saved to API");
+        }).catch((err) => {
+          console.warn("API save failed, falling back to localStorage", err);
+          saveDraftToStorage(draft);
+          currentDraftId = id;
+          buildDraftsList();
+          flash("API save failed. Saved locally");
+        });
+      } else {
+        saveDraftToStorage(draft);
+        currentDraftId = id;
+        buildDraftsList();
+        flash("Draft saved");
+      }
     }
 
     function getSuggestedTitle() {
@@ -759,9 +835,7 @@
       return "Untitled ecard";
     }
 
-    async function loadDraft(id) {
-      const draft = loadDraftFromStorage(id);
-      if (!draft) return;
+    async function restoreDraft(draft) {
       currentDraftId = draft.id;
       currentTemplate = draft.template ? TEMPLATES.find(t => t.file === draft.template) || { file: draft.template, w: draft.canvasSize?.w, h: draft.canvasSize?.h } : null;
 
@@ -793,6 +867,12 @@
         await ensureFontLoaded(fam);
       }
       canvas.renderAll();
+    }
+
+    async function loadDraft(id) {
+      const draft = loadDraftFromStorage(id);
+      if (!draft) return;
+      await restoreDraft(draft);
       flash("Draft loaded");
     }
 
@@ -806,9 +886,9 @@
     function maybeAutosave() {
       if (!autosave) return;
       clearTimeout(autosaveTimer);
-      autosaveTimer = setTimeout(() => {
+      autosaveTimer = setTimeout(async () => {
         if (!currentDraftId) {
-          // Create a transient id
+          // Create a transient id for first autosave
           currentDraftId = "autosave_" + Date.now();
         }
         const title = getSuggestedTitle() + " (autosave)";
@@ -822,8 +902,20 @@
           canvasSize: { w: canvas.getWidth(), h: canvas.getHeight() },
           data: json
         };
-        saveDraftToStorage(draft);
-        buildDraftsList();
+        if (storageMode === "api") {
+          try {
+            const newId = await saveDraftToApi(draft);
+            currentDraftId = newId || draft.id;
+            updateUrlWithDraftId(currentDraftId);
+          } catch (e) {
+            console.warn("Autosave API failed, storing locally as fallback", e);
+            saveDraftToStorage(draft);
+            buildDraftsList();
+          }
+        } else {
+          saveDraftToStorage(draft);
+          buildDraftsList();
+        }
       }, 600);
     }
 
@@ -870,8 +962,25 @@
       document.getElementById("btnSave").addEventListener("click", saveDraft);
       document.getElementById("btnNew").addEventListener("click", newDraftBlank);
       document.getElementById("btnAutoSave").addEventListener("click", toggleAutosave);
+      document.getElementById("btnStorageMode").addEventListener("click", toggleStorageMode);
+      // Initialize storage mode button text
+      setStorageMode("local");
 
-      // Load last draft automatically if exists
+      // If URL has ?draft_id=, try loading from API first
+      const urlDraftId = getUrlDraftId();
+      if (urlDraftId) {
+        try {
+          setStorageMode("api");
+          await loadDraftFromApi(urlDraftId);
+          return;
+        } catch (e) {
+          console.warn("Failed to load from API using draft_id", e);
+          // fall back to local flow below
+          setStorageMode("local");
+        }
+      }
+
+      // Load last draft automatically if exists (local)
       const list = getDraftIndex();
       if (list.length) {
         await loadDraft(list[0].id);
